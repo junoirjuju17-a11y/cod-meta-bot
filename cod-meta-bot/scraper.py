@@ -96,8 +96,9 @@ class WZStatsHtmlParser(HTMLParser):
 
 
 class WZStatsScraper:
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, enable_browser_fallback: bool = False) -> None:
         self.base_url = base_url
+        self.enable_browser_fallback = enable_browser_fallback
 
     async def fetch_meta_weapons(self) -> list[Weapon]:
         async with async_playwright() as playwright:
@@ -105,6 +106,11 @@ class WZStatsScraper:
             if html_weapons:
                 return html_weapons
 
+            if not self.enable_browser_fallback:
+                logger.warning("No weapons extracted from WZStats HTML")
+                return []
+
+            logger.info("HTML extraction returned no weapons; trying Chromium fallback")
             browser = await playwright.chromium.launch(
                 headless=True,
                 args=self._browser_args(),
@@ -198,6 +204,10 @@ class WZStatsScraper:
 
     async def enrich_weapon(self, weapon: Weapon) -> Weapon:
         async with async_playwright() as playwright:
+            weapon.attachments = await self._fetch_attachments_from_html(playwright, weapon.url)
+            if weapon.attachments or not self.enable_browser_fallback:
+                return weapon
+
             browser = await playwright.chromium.launch(
                 headless=True,
                 args=self._browser_args(),
@@ -217,6 +227,63 @@ class WZStatsScraper:
                 await browser.close()
 
         return weapon
+
+    async def _fetch_attachments_from_html(self, playwright: Any, url: str) -> list[str]:
+        request = await playwright.request.new_context(
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            )
+        )
+        try:
+            response = await request.get(url, timeout=30_000)
+            if not response.ok:
+                return []
+            html = await response.text()
+            return self._extract_attachments_from_html(html)
+        except Exception:
+            logger.info("Unable to extract weapon details from WZStats HTML")
+            return []
+        finally:
+            await request.dispose()
+
+    def _extract_attachments_from_html(self, html: str) -> list[str]:
+        parser = WZStatsHtmlParser()
+        parser.feed(html)
+
+        labels = [
+            "bouche",
+            "canon",
+            "laser",
+            "lunette",
+            "crosse",
+            "chargeur",
+            "munitions",
+            "poignée",
+            "accessoire",
+            "muzzle",
+            "barrel",
+            "optic",
+            "stock",
+            "magazine",
+            "ammunition",
+            "underbarrel",
+            "rear grip",
+        ]
+        found: list[str] = []
+
+        for token in parser.tokens:
+            if token.kind not in {"text", "link"}:
+                continue
+            text = self._clean_text(token.value)
+            if len(text) < 3 or len(text) > 90:
+                continue
+            if not any(label in text.casefold() for label in labels):
+                continue
+            if text not in found:
+                found.append(text)
+
+        return found[:10]
 
     def _browser_args(self) -> list[str]:
         return [

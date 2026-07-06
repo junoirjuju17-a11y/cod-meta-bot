@@ -31,6 +31,7 @@ DATABASE_PATH=data/meta.sqlite3
 WZSTATS_URL=https://wzstats.gg/fr
 CHECK_INTERVAL_MINUTES=10
 LOG_LEVEL=INFO
+ENABLE_BROWSER_FALLBACK=false
 ```
 
 `GUILD_ID` est recommandé pour synchroniser les commandes slash immédiatement sur un serveur précis.
@@ -80,5 +81,11 @@ Sans volume, la base peut être recréée lors d'un redéploiement complet.
 ## Notes
 
 WZStats charge son contenu dynamiquement. Le scraper utilise donc Playwright, attend le contenu visible, extrait les cartes d'armes, puis enrichit les premières armes avec les détails disponibles sur leurs pages.
+
+Par défaut, le bot utilise l'API réseau de Playwright pour lire le HTML déjà rendu par WZStats, sans ouvrir Chromium. C'est plus stable sur Railway. Pour forcer un fallback navigateur complet, définir :
+
+```env
+ENABLE_BROWSER_FALLBACK=true
+```
 
 Si WZStats est temporairement inaccessible, le bot journalise l'erreur et réessaie au cycle suivant sans s'arrêter.

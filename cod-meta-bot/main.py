@@ -25,7 +25,10 @@ class CodMetaBot(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.db = Database(settings.database_path)
-        self.scraper = WZStatsScraper(settings.wzstats_url)
+        self.scraper = WZStatsScraper(
+            settings.wzstats_url,
+            enable_browser_fallback=settings.enable_browser_fallback,
+        )
         self._latest_weapons: list[Weapon] = []
         self._startup_complete = asyncio.Event()
 
