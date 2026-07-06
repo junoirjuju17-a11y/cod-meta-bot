@@ -25,8 +25,13 @@ def save_db(data):
 @client.event
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
-    check_meta.start()
 
+    channel = client.get_channel(CHANNEL_ID)
+
+    if channel:
+        await channel.send("✅ COD Meta Bot est en ligne !")
+
+    check_meta.start()
 @tasks.loop(minutes=30)
 async def check_meta():
     channel = client.get_channel(CHANNEL_ID)
