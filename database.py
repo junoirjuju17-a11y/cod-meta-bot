@@ -89,5 +89,40 @@ class Database:
                 (weapon.identity,),
             )
 
+    def get_weapons(self, limit: int | None = None) -> list[Weapon]:
+        query = """
+            SELECT name, tier, weapon_type, image_url, url, rank, attachments
+            FROM weapons
+            ORDER BY rank ASC, name ASC
+        """
+        params: tuple[int, ...] = ()
+
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (limit,)
+
+        rows = self.connection.execute(query, params).fetchall()
+        weapons: list[Weapon] = []
+
+        for row in rows:
+            try:
+                attachments = json.loads(row["attachments"] or "[]")
+            except json.JSONDecodeError:
+                attachments = []
+
+            weapons.append(
+                Weapon(
+                    name=row["name"],
+                    tier=row["tier"] or "",
+                    weapon_type=row["weapon_type"] or "",
+                    image_url=row["image_url"] or "",
+                    url=row["url"],
+                    rank=row["rank"] or len(weapons) + 1,
+                    attachments=attachments if isinstance(attachments, list) else [],
+                )
+            )
+
+        return weapons
+
     def close(self) -> None:
         self.connection.close()

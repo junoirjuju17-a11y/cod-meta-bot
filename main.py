@@ -57,7 +57,14 @@ class CodMetaBot(discord.Client):
         if self._latest_weapons and not force_refresh:
             return self._latest_weapons
 
-        weapons = await self.scraper.fetch_meta_weapons()
+        try:
+            weapons = await self.scraper.fetch_meta_weapons()
+        except Exception:
+            logger.exception("Unable to refresh WZStats data")
+            if self._latest_weapons:
+                return self._latest_weapons
+            return self.db.get_weapons()
+
         self._latest_weapons = weapons
         self.db.upsert_weapons(weapons)
         return weapons
@@ -133,7 +140,7 @@ def register_commands(bot: CodMetaBot) -> None:
         await interaction.response.defer(thinking=True)
         weapons = await bot.fetch_current_weapons(force_refresh=True)
         if not weapons:
-            await interaction.followup.send("Aucune arme META trouvée pour le moment.")
+            await interaction.followup.send("WZStats est momentanément inaccessible et aucun cache local n'est encore disponible.")
             return
 
         lines = [format_weapon_line(index, weapon) for index, weapon in enumerate(weapons, start=1)]
@@ -147,7 +154,7 @@ def register_commands(bot: CodMetaBot) -> None:
         weapons = await bot.fetch_current_weapons(force_refresh=True)
         top_weapons = weapons[:10]
         if not top_weapons:
-            await interaction.followup.send("Aucune arme trouvée pour le moment.")
+            await interaction.followup.send("WZStats est momentanément inaccessible et aucun cache local n'est encore disponible.")
             return
 
         lines = [format_weapon_line(index, weapon) for index, weapon in enumerate(top_weapons, start=1)]
@@ -160,6 +167,10 @@ def register_commands(bot: CodMetaBot) -> None:
     async def arme(interaction: discord.Interaction, nom: str) -> None:
         await interaction.response.defer(thinking=True)
         weapons = await bot.fetch_current_weapons(force_refresh=True)
+        if not weapons:
+            await interaction.followup.send("WZStats est momentanément inaccessible et aucun cache local n'est encore disponible.")
+            return
+
         normalized_query = nom.casefold().strip()
 
         weapon = next((item for item in weapons if item.name.casefold() == normalized_query), None)

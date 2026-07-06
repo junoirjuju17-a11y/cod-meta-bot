@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urljoin
 
-from playwright.async_api import Browser, Page, TimeoutError as PlaywrightTimeoutError, async_playwright
+from playwright.async_api import (
+    Browser,
+    Error as PlaywrightError,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+    async_playwright,
+)
 
 
 logger = logging.getLogger("cod-meta-bot.scraper")
@@ -36,32 +42,24 @@ class WZStatsScraper:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
                 headless=True,
-                args=[
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                ],
+                args=self._browser_args(),
             )
             try:
-                page = await browser.new_page(
-                    viewport={"width": 1440, "height": 1200},
-                    user_agent=(
-                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-                    ),
-                )
-                await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60_000)
-                await self._wait_for_dynamic_content(page)
+                page = await self._new_page(browser, width=1365, height=900)
+                try:
+                    await page.goto(self.base_url, wait_until="domcontentloaded", timeout=45_000)
+                    await self._wait_for_dynamic_content(page)
 
-                raw_weapons = await self._extract_from_page(page)
-                weapons = self._normalize_weapons(raw_weapons)
+                    raw_weapons = await self._extract_from_page(page)
+                    weapons = self._normalize_weapons(raw_weapons)
 
-                if not weapons:
-                    logger.warning("No weapons extracted from WZStats")
-                    return []
+                    if not weapons:
+                        logger.warning("No weapons extracted from WZStats")
+                        return []
 
-                await self._enrich_weapon_details(browser, weapons[:10])
-                return weapons
+                    return weapons
+                finally:
+                    await page.context.close()
             finally:
                 await browser.close()
 
@@ -69,33 +67,62 @@ class WZStatsScraper:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
                 headless=True,
-                args=[
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                ],
+                args=self._browser_args(),
             )
             try:
-                page = await browser.new_page(viewport={"width": 1280, "height": 1000})
+                page = await self._new_page(browser, width=1280, height=900)
                 try:
                     await page.goto(weapon.url, wait_until="domcontentloaded", timeout=30_000)
                     try:
                         await page.wait_for_load_state("networkidle", timeout=15_000)
-                    except PlaywrightTimeoutError:
-                        pass
+                    except (PlaywrightTimeoutError, PlaywrightError):
+                        logger.info("Detail page did not reach network idle for %s", weapon.name)
                     weapon.attachments = await self._extract_attachments(page)
                 finally:
-                    await page.close()
+                    await page.context.close()
             finally:
                 await browser.close()
 
         return weapon
+
+    def _browser_args(self) -> list[str]:
+        return [
+            "--disable-background-networking",
+            "--disable-dev-shm-usage",
+            "--disable-extensions",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-sync",
+            "--disable-web-security",
+            "--js-flags=--max-old-space-size=128",
+            "--no-first-run",
+            "--no-sandbox",
+        ]
+
+    async def _new_page(self, browser: Browser, width: int, height: int) -> Page:
+        context = await browser.new_context(
+            viewport={"width": width, "height": height},
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            ),
+        )
+        async def block_heavy_resources(route):
+            if route.request.resource_type in {"font", "image", "media"}:
+                await route.abort()
+                return
+            await route.continue_()
+
+        await context.route("**/*", block_heavy_resources)
+        return await context.new_page()
 
     async def _wait_for_dynamic_content(self, page: Page) -> None:
         try:
             await page.wait_for_load_state("networkidle", timeout=30_000)
         except PlaywrightTimeoutError:
             logger.info("Network idle timeout reached; continuing with visible content")
+        except PlaywrightError:
+            logger.info("Network idle wait failed; continuing with loaded DOM", exc_info=True)
 
         candidates = [
             "a[href*='loadout']",
@@ -109,7 +136,7 @@ class WZStatsScraper:
             try:
                 await page.wait_for_selector(selector, timeout=8_000)
                 return
-            except PlaywrightTimeoutError:
+            except (PlaywrightTimeoutError, PlaywrightError):
                 continue
 
     async def _extract_from_page(self, page: Page) -> list[dict[str, Any]]:
@@ -260,16 +287,16 @@ class WZStatsScraper:
             await asyncio.sleep(0.2)
 
     async def _enrich_weapon_with_browser(self, browser: Browser, weapon: Weapon) -> None:
-        page = await browser.new_page(viewport={"width": 1280, "height": 1000})
+        page = await self._new_page(browser, width=1280, height=900)
         try:
             await page.goto(weapon.url, wait_until="domcontentloaded", timeout=30_000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=15_000)
-            except PlaywrightTimeoutError:
-                pass
+            except (PlaywrightTimeoutError, PlaywrightError):
+                logger.info("Detail page did not reach network idle for %s", weapon.name)
             weapon.attachments = await self._extract_attachments(page)
         finally:
-            await page.close()
+            await page.context.close()
 
     async def _extract_attachments(self, page: Page) -> list[str]:
         values = await page.evaluate(
