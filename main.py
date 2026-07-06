@@ -2,8 +2,13 @@ import os
 import discord
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+guild = client.guilds[0]
+print(f"Serveur : {guild.name} ({guild.id})")
 
+for ch in guild.text_channels:
+    print(f"{ch.name} -> {ch.id}")
+
+channel = guild.get_channel(CHANNEL_ID)
 intents = discord.Intents.default()
 
 client = discord.Client(intents=intents)
