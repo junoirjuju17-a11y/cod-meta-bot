@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import tasks
 from scraper import get_meta
+from database import Database
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
@@ -10,12 +11,14 @@ intents = discord.Intents.default()
 
 client = discord.Client(intents=intents)
 
-last_meta = None
+db = Database()
 
 
 @client.event
 async def on_ready():
-    print(f"✅ Connecté : {client.user}")
+    print("=" * 60)
+    print(f"Bot connecté : {client.user}")
+    print("=" * 60)
 
     if not check_meta.is_running():
         check_meta.start()
@@ -23,38 +26,58 @@ async def on_ready():
 
 @tasks.loop(minutes=10)
 async def check_meta():
-    global last_meta
 
     channel = client.get_channel(CHANNEL_ID)
 
     if channel is None:
-        print("❌ Salon introuvable")
+        print("Salon introuvable")
         return
 
     try:
-        weapons = await get_meta()
 
-        if not weapons:
-            print("Aucune arme trouvée.")
+        metas = await get_meta()
+
+        if len(metas) == 0:
+            print("Aucune arme récupérée.")
             return
 
-        current = weapons[0]
+        for weapon in metas:
 
-        if last_meta is None:
-            last_meta = current
-            print(f"Méta actuelle : {current}")
-            return
+            if db.exists(weapon["name"]):
+                continue
 
-        if current != last_meta:
-            last_meta = current
-
-            await channel.send(
-                f"🔥 **Nouvelle arme META détectée !**\n\n"
-                f"**{current}**\n\n"
-                f"https://wzstats.gg/fr"
+            embed = discord.Embed(
+                title="🔥 Nouvelle arme META",
+                description=weapon["name"],
+                colour=0xff5500
             )
 
-            print("Nouvelle méta envoyée.")
+            embed.add_field(
+                name="Tier",
+                value=weapon["tier"],
+                inline=True
+            )
+
+            embed.add_field(
+                name="Type",
+                value=weapon["type"],
+                inline=True
+            )
+
+            embed.add_field(
+                name="Source",
+                value="https://wzstats.gg/fr",
+                inline=False
+            )
+
+            if weapon["image"] != "":
+                embed.set_thumbnail(url=weapon["image"])
+
+            await channel.send(embed=embed)
+
+            db.add(weapon["name"])
+
+            print("Nouvelle arme :", weapon["name"])
 
     except Exception as e:
         print(e)
