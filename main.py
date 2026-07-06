@@ -1,35 +1,67 @@
 import os
+import json
 import discord
 from discord.ext import tasks
-import requests
-from bs4 import BeautifulSoup
+from scraper import get_meta
 
-TOKEN=os.getenv("DISCORD_TOKEN")
-CHANNEL_ID=int(os.getenv("CHANNEL_ID","0"))
+TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-intents=discord.Intents.default()
-client=discord.Client(intents=intents)
-last_title=None
+intents = discord.Intents.default()
+client = discord.Client(intents=intents)
 
-@tasks.loop(minutes=30)
-async def check_meta():
-    global last_title
-    ch=client.get_channel(CHANNEL_ID)
-    if not ch:
-        return
-    try:
-        r=requests.get("https://wzstats.gg/",timeout=15,headers={"User-Agent":"Mozilla/5.0"})
-        soup=BeautifulSoup(r.text,"html.parser")
-        title=soup.title.text.strip()
-        if title!=last_title:
-            last_title=title
-            await ch.send(f"🔥 Mise à jour détectée sur WZStats !\\nTitre : **{title}**\\nhttps://wzstats.gg/")
-    except Exception as e:
-        print(e)
+DB_FILE = "published.json"
+
+def load_db():
+    if not os.path.exists(DB_FILE):
+        return []
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_db(data):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 @client.event
 async def on_ready():
-    print(f"Connecté : {client.user}")
+    print(f"✅ Connecté en tant que {client.user}")
     check_meta.start()
+
+@tasks.loop(minutes=30)
+async def check_meta():
+    channel = client.get_channel(CHANNEL_ID)
+
+    if channel is None:
+        print("❌ Salon introuvable")
+        return
+
+    old = load_db()
+
+    try:
+        weapons = await get_meta()
+
+        for weapon in weapons:
+            if weapon not in old:
+
+                embed = discord.Embed(
+                    title="🔥 Nouvelle arme méta",
+                    description=f"**{weapon}** est maintenant dans la méta.",
+                    color=0xff6600
+                )
+
+                embed.add_field(
+                    name="Source",
+                    value="https://wzstats.gg/fr",
+                    inline=False
+                )
+
+                await channel.send(embed=embed)
+
+                old.append(weapon)
+
+        save_db(old)
+
+    except Exception as e:
+        print(e)
 
 client.run(TOKEN)
