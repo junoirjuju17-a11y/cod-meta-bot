@@ -6,32 +6,25 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 intents = discord.Intents.default()
 intents.guilds = True
+intents.guild_messages = True
 
 client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
-    print(f"✅ Connecté : {client.user}")
-
-    print("Serveurs :")
-    for guild in client.guilds:
-        print(f"- {guild.name} ({guild.id})")
-
-        print("Salons :")
-        for ch in guild.text_channels:
-            print(f"  {ch.name} -> {ch.id}")
+    print(f"Connecté : {client.user}")
 
     try:
-        channel = client.get_channel(CHANNEL_ID)
+        channel = await client.fetch_channel(CHANNEL_ID)
 
-        if channel is None:
-            print("❌ Salon introuvable")
-            return
+        print(f"Salon : {channel.name}")
 
-        await channel.send("✅ Test du bot réussi !")
-        print("✅ Message envoyé")
+        await channel.send("✅ Le bot fonctionne !")
+
+        print("Message envoyé")
 
     except Exception as e:
-        print(e)
+        import traceback
+        traceback.print_exc()
 
 client.run(TOKEN)
