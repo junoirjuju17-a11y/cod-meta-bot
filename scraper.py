@@ -1,26 +1,28 @@
-import aiohttp
-from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
 URL = "https://wzstats.gg/fr"
 
 async def get_meta():
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(URL, headers={
-            "User-Agent":"Mozilla/5.0"
-        }) as r:
+    async with async_playwright() as p:
 
-            html = await r.text()
+        browser = await p.chromium.launch(headless=True)
 
-    soup = BeautifulSoup(html,"lxml")
+        page = await browser.new_page()
 
-    weapons=[]
+        await page.goto(URL, wait_until="networkidle")
 
-    for h3 in soup.find_all("h3"):
+        text = await page.locator("body").inner_text()
 
-        name=h3.get_text(strip=True)
+        await browser.close()
 
-        if len(name)>2:
-            weapons.append(name)
+        weapons = []
 
-    return list(dict.fromkeys(weapons))
+        for line in text.split("\n"):
+
+            line = line.strip()
+
+            if len(line) > 2:
+                weapons.append(line)
+
+        return weapons
