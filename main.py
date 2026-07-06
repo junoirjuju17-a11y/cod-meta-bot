@@ -2,27 +2,24 @@ import os
 import discord
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 intents = discord.Intents.default()
-intents.guilds = True
 
 client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
-    print("=" * 60)
-    print("BOT CONNECTÉ")
-    print("=" * 60)
+    print(f"Connecté : {client.user}")
 
-    for guild in client.guilds:
-        print(f"\nServeur : {guild.name}")
-        print(f"ID : {guild.id}")
+    channel = client.get_channel(CHANNEL_ID)
 
-        print("\nSALONS :")
+    if channel is None:
+        print("Salon introuvable")
+        return
 
-        for channel in guild.channels:
-            print(f"{channel.name} -> {channel.id}")
+    await channel.send("✅ Le bot fonctionne !")
 
-    await client.close()
+    print("Message envoyé !")
 
 client.run(TOKEN)
