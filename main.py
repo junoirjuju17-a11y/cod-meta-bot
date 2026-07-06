@@ -1,27 +1,27 @@
 import os
 import discord
-from discord.ext import tasks
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 intents = discord.Intents.default()
+intents.guilds = True
+intents.guild_messages = True
+
 client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
-    print("===================================")
-    print(f"Connecté en tant que {client.user}")
-    print("===================================")
+    print(f"Connecté : {client.user}")
 
-    channel = client.get_channel(CHANNEL_ID)
+    try:
+        channel = await client.fetch_channel(CHANNEL_ID)
 
-    if channel is None:
-        print("Salon introuvable")
-        return
+        await channel.send("✅ Le bot fonctionne !")
 
-    print("Salon trouvé")
+        print("Message envoyé")
 
-    await channel.send("✅ Le bot fonctionne !")
+    except Exception as e:
+        print(e)
 
 client.run(TOKEN)
