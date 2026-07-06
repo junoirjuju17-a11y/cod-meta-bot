@@ -1,4 +1,2 @@
-discord.py==2.4.0
-aiohttp
-beautifulsoup4
-lxml
+discord.py
+playwright
